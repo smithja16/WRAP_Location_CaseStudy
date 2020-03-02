@@ -16,7 +16,14 @@ library(viridis)
 source('WRAP_Location_CaseStudy/SimulatedWorld_Function.R') #load simulation function
 
 #-----Simulate data----
-dat <- SimulateWorld() #takes a few minutes
+dat <- SimulateWorld(temp_diff = 4, 
+                     temp_spatial = "simple", 
+                     PA_shape = "logistic", 
+                     abund_enviro = "lnorm_low")  #takes a few minutes
+#SB's original: temp_diff = 4, temp_spatial = "simple", PA_shape = "logistic", abund_enviro = "lnorm_low"
+#EW's update: temp_diff = 4, temp_spatial = "matern", PA_shape = "logistic", abund_enviro = "lnorm_high"
+#JS's sim: temp_diff = 2, temp_spatial = "matern", PA_shape = "linear", abund_enviro = "poisson"
+
 colnames(dat)[1:2] <- c("Lon","Lat")
 saveRDS(dat, paste0(Sim1,'Sim1.rds')) #save data 
 # dat <- readRDS(paste0(Sim1,'Sim1.rds')) #load in data if needed
