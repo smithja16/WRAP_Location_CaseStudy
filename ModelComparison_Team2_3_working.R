@@ -58,7 +58,7 @@ plot(gam1)
 
 #add fake O2 and metabolic index to data
 dat$O2 <- rnorm(nrow(dat), 3, 1)  #fake oxygen data
-dat$MI <- (dat$temp + dat$O2)/2  #fake metabolic index data
+dat$MI <- dat$suitability * dat$O2  #fake metabolic index data
 
 
 #fit gam with metabolic index as covariate or offset (Jim T)
