@@ -1,5 +1,5 @@
 
-setwd("C:/Users/James.Thorson/Desktop/Git/WRAP_Location_CaseStudy")
+#setwd("C:/Users/James.Thorson/Desktop/Git/WRAP_Location_CaseStudy")
 
 #----Load Library & Function----
 library(dismo)
@@ -26,9 +26,19 @@ temp_diff <- c(1,4,3,7) #specifies min and max temps at year 1 and year 100 (e.g
 # dat <- SimulateWorld_ROMS(PA_shape = PA_shape, abund_enviro = abund_enviro, dir = dir ) #takes a few mins
 #OR this function
 dat <- SimulateWorld(temp_diff = temp_diff,  temp_spatial = temp_spatial, PA_shape = PA_shape, abund_enviro = abund_enviro) #takes a few minutes
+saveRDS(dat, "dat.rds")
 
 #make headers consistent (Steph needs to update functions to fix this)
 colnames(dat)[1:2] <- c("Lon","Lat")
+
+# Prepare to project coordinates (if using actual west coast grid (ROMS))
+dat_ll <- dat
+coordinates(dat_ll) <- c("Lon", "Lat")
+proj4string(dat_ll) <- CRS("+proj=longlat +datum=WGS84")
+# convert to UTM with spTransform
+dat_utm <- spTransform(dat_ll, 
+                       CRS("+proj=utm +zone=10 +datum=WGS84 +units=km"))
+dat = as.data.frame(dat_utm) # convert back from sp object to data frame
 
 
 #Make some quick plots to explore the data
