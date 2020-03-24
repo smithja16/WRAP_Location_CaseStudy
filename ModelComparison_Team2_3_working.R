@@ -1,3 +1,6 @@
+
+setwd("C:/Users/James.Thorson/Desktop/Git/WRAP_Location_CaseStudy")
+
 #----Load Library & Function----
 library(dismo)
 library(gbm)
@@ -57,10 +60,27 @@ plot(gam1)
 
 
 #add fake O2 and metabolic index to data
-dat$O2 <- rnorm(nrow(dat), 3, 1)  #fake oxygen data
-dat$MI <- dat$suitability * dat$O2  #fake metabolic index data
+dat_hist$O2 <- rnorm(nrow(dat_hist), 3, 1)  #fake oxygen data
+#dat$MI <- dat$suitability * dat$O2  #fake metabolic index data
+dat_hist$MI <- dat_hist$suitability * exp(dat_hist$O2)  #fake metabolic index data
 
 
-#fit gam with metabolic index as covariate or offset (Jim T)
-xxx
+# fit gam with Gaussian process smoothers so variances are additive in log-space
+gam1 <- gam(abundance ~ s(temp,bs='gp'), data=dat_hist, family=poisson(link=log))
+
+#fit gam with metabolic index as offset; use log(MI) so that its multiplicative in natural space
+gam2 <- gam(abundance ~ s(temp,bs='gp'), data=dat_hist, family=poisson(link=log), offset=log(dat_hist$MI) )
+
+#fit gam with metabolic index as linear covariate (adds one parameter relative to gam2)
+gam3 <- gam(abundance ~ s(temp,bs='gp') + dat_hist$MI, data=dat_hist, family=poisson(link=log) )
+
+#fit gam with metabolic index as GP smoothed response (adds effective_degrees_of_freedome relative to gam2)
+gam4 <- gam(abundance ~ s(temp,bs='gp') + s(dat_hist$MI,bs='gp'), data=dat_hist, family=poisson(link=log) )
+
+#fit with spatially varying impact of linear metabolic inde
+gam5 <- gam(abundance ~ s(temp,bs='gp') + s(Lon,Lat,by=dat_hist$MI), data=dat_hist, family=poisson(link=log) )
+
+# see Degrees of freedom
+anova(gam1,gam2,gam3,gam4,gam5) #, text="Chisq")
+
 
