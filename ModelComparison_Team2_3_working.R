@@ -205,6 +205,7 @@ glmm6 <- try(sdmTMB(
   quadratic_roots = TRUE
 ))
 
+save(glmm1,glmm2,glmm3,glmm4,glmm5,glmm6, file = "glmms.rdata")
 # note glmm5 and glmm6 not converging with current operating model output
 
 
@@ -223,15 +224,17 @@ predict_glmm <- function(model, max_year){
   
   # aggregate predictions and observations at some coarse spatial resolution
   # to get rid of occurrence of 0s (if they arise from operating model)
-  pred_summary = dplyr::mutate(pred, lon_cell = ceiling(Lon/2),
-                               lat_cell = ceiling(Lat/2)) %>% 
+  pred_summary = dplyr::mutate(pred, lon_cell = ceiling(Lon/4),
+                               lat_cell = ceiling(Lat/4)) %>% 
     dplyr::filter(year <= max_year) %>%
     dplyr::group_by(lon_cell, lat_cell, year) %>% 
     dplyr::summarize(mean_obs = mean(abundance),
                      mean_pred = sum(exp(est)))
   
-  ggplot(pred_summary,aes(mean_pred,mean_obs)) + geom_point(alpha = 0.1) + 
-    geom_abline(intercept = 0, slope = 1) + facet_wrap(~year)
+  return(pred_summary)
 } 
 
-predict_glmm(model = glmm1, max_year = 2026)
+pred_summary <- predict_glmm(model = glmm1, max_year = 2026)
+
+ggplot(pred_summary,aes(mean_pred,mean_obs)) + geom_point(alpha = 0.4) + 
+  geom_abline(intercept = 0, slope = 1) + facet_wrap(~year)
