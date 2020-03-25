@@ -16,7 +16,7 @@ source('SimulatedWorld_Function.R') #load simulation function
 #-----Simulate data----
 
 #Set parameters for functions
-abund_enviro <- "poisson" #can be "lnorm_low" (SB); "lnorm_high" (EW); or "poisson" (JS)
+abund_enviro <- "lnorm_low" #can be "lnorm_low" (SB); "lnorm_high" (EW); or "poisson" (JS)
 PA_shape <- "logistic_prev" #can be "logistic" (SB); "logistic_prev","linear" (JS)
 temp_spatial <- "matern" #can be "simple" (SB); or "matern" (EW)
 temp_diff <- c(1,4,3,7) #specifies min and max temps at year 1 and year 100 (e.g. temp_diff=c(1,3,5,7) means year 1 varies from 1-3C and year 100 from 5-7C). For non-ROMS data. 
@@ -53,11 +53,27 @@ dat_hist <- dat[dat$year<=2020,]
 dat_fcast <- dat[dat$year>2020,]
 
 
-#----Build GAM Models----
+#---- GAMs ----
 
-gam1 <- gam(abundance ~ s(temp), data=dat_hist, family=poisson)
-plot(gam1)
+dat_hist$fYear <- as.factor(dat_hist$year)
 
+gam_enviro <- gam(abundance ~ s(temp), data=dat_hist, family=tw())
+plot(gam_enviro); AIC(gam_enviro)  #AIC=25340
+
+gam_ST1 <- gam(abundance ~ s(temp) + s(Lat,Lon), data=dat_hist, family=tw())
+plot(gam_ST1, pages=1); AIC(gam_ST1)  #25320
+
+# gam_ST2 <- gam(abundance ~ s(temp) + s(Lat,Lon, by=fYear), data=dat_hist, family=tw())
+# plot(gam_ST2)
+
+gam_ST3 <- gam(abundance ~ s(temp) + te(Lat,Lon,year), data=dat_hist, family=poisson)
+plot(gam_ST3)
+
+gam_ST4 <- gamm(abundance ~ s(temp) + s(Lat,Lon), correlation=corGaus(.1, form=~Lat+Lon), data=dat_hist, family=poisson)
+plot(gam_ST4$gam)
+
+
+#---- GAMs with Metabolic 'COnstraint' ----
 
 #add fake O2 and metabolic index to data
 dat_hist$O2 <- rnorm(nrow(dat_hist), 3, 1)  #fake oxygen data
@@ -84,3 +100,4 @@ gam5 <- gam(abundance ~ s(temp,bs='gp') + s(Lon,Lat,by=dat_hist$MI), data=dat_hi
 anova(gam1,gam2,gam3,gam4,gam5) #, text="Chisq")
 
 
+#---- GLMMs ----
