@@ -351,5 +351,12 @@ plot(cog_fcast_lat$year,cog_fcast_lat$truth, type='b', ylab="COG 'latitude'", xl
 lines(cog_fcast_lat$year,cog_fcast_lat$gam_enviro, type='b', col="blue")
 
 
+## Effective Area Occupied (Jim)
+#can demonstrate using dat$abundance
+
+
+
+
+
 
 
