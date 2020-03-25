@@ -30,7 +30,7 @@ temp_diff <- c(1,4,3,7) #specifies min and max temps at year 1 and year 100 (e.g
 # dat <- SimulateWorld_ROMS(PA_shape = PA_shape, abund_enviro = abund_enviro, dir = dir ) #takes a few mins
 #OR this function
 dat <- SimulateWorld(temp_diff = temp_diff,  temp_spatial = temp_spatial, PA_shape = PA_shape, abund_enviro = abund_enviro) #takes a few minutes
-saveRDS(dat, "dat.rds")
+#saveRDS(dat, "dat.rds")
 
 #make headers consistent (Steph needs to update functions to fix this)
 colnames(dat)[1:2] <- c("Lon","Lat")
@@ -195,7 +195,7 @@ glmm1 <- try(sdmTMB(
   weights = weights,
   spatial_only = FALSE,
   spatial_trend = FALSE
-))
+))  #takes 5+ mins
 
 # model without covariates but with spatial trend random field, and spatiotemporal random fields as IID
 glmm2 <- try(sdmTMB(
@@ -307,3 +307,5 @@ predict_glmm <- function(model, max_year){
 
 predict_glmm(model = glmm1, max_year = 2026)
 
+# plot(dat_fcast$abundance, exp(pred$est), xlab="observed", ylab="predicted")
+# abline(0,1, col='red')
