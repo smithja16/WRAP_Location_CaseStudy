@@ -9,7 +9,7 @@ library(ggplot2)
 library(viridis)
 library(BBmisc)
 library(neuralnet)
-devtools::install_github("pbs-assess/sdmTMB")
+#devtools::install_github("pbs-assess/sdmTMB")
 library(sdmTMB)
 library(sp)
 library(dplyr)
@@ -63,8 +63,9 @@ plot(aggregate(temp~year,dat,FUN="mean"),type="l",ylab="Temperature", col="dark 
 
 
 #Create dataframe with historical/forecast data
-dat_hist <- dat[dat$year<=2020,]
-dat_fcast <- dat[dat$year>2020,]
+year_fcast <- 2020
+dat_hist <- dat[dat$year<=year_fcast,]
+dat_fcast <- dat[dat$year>year_fcast,]
 
 
 #----Build GAM Models----
@@ -100,8 +101,10 @@ anova(gam1,gam2,gam3,gam4,gam5) #, text="Chisq")
 
 #----Build GLMM Models----
 
-# note that there is a much cleaner way of looping through models 
+# note that there is a much cleaner way of iterating through models 
 # but for now simplifying for clarity and consistency with GAM fit formatting above
+
+# see ?sdmTMB for options; if we want to reduce the # of models, could drop ones with IID spatiotemporal fields
 
 # make SPDE (stochastic partial differential equation that these INLA-based methods rely on)
 spde <- try(make_spde(x = dat$Lon, y = dat$Lat, n_knots = 50), silent=TRUE) # increase knots to ~250 for WC data
@@ -109,7 +112,7 @@ plot_spde(spde) # can vary number of knots to modify the mesh until you get what
 
 # need to remove future years from test data set via weights
 weights = rep(0,nrow(dat))
-weights[which(dat$year <= 2020)] = 1
+weights[which(dat$year <= year_fcast)] = 1
 
 # model without covariates but with spatiotemporal random fields as AR1
 glmm1 <- try(sdmTMB(
@@ -211,30 +214,49 @@ save(glmm1,glmm2,glmm3,glmm4,glmm5,glmm6, file = "glmms.rdata")
 
 # make prediction-- have to add dummy years as temporary adjustment to sdmTMB requirement
 # that all time steps in original model must also be present in prediction data frame
-predict_glmm <- function(model, max_year){
+predict_glmm <- function(model, year_fcast){
   dummy = data.frame(year = unique(dat$year),
                      Lat=dat$Lat[1],
                      Lon=unique(dat$Lon[1]),
-                     temp = dat$temp[1])
+                     temp = dat$temp[1]) # would need to add more dummy covariates if included in model
   pred = predict(model, 
                  newdata=rbind(dat_fcast[,c("year","Lon","Lat","temp")], 
-                               dummy), xy_cols = c("Lon", "Lat"))
-  pred = pred[-c(seq(nrow(pred)-nrow(dummy)+1,nrow(pred))),] # drop dummy data
-  pred$abundance = dat_fcast$abundance
+                               dummy), xy_cols = c("Lon", "Lat"),
+                 return_tmb_object = TRUE)
   
-  # aggregate predictions and observations at some coarse spatial resolution
-  # to get rid of occurrence of 0s (if they arise from operating model)
-  pred_summary = dplyr::mutate(pred, lon_cell = ceiling(Lon/4),
-                               lat_cell = ceiling(Lat/4)) %>% 
-    dplyr::filter(year <= max_year) %>%
-    dplyr::group_by(lon_cell, lat_cell, year) %>% 
-    dplyr::summarize(mean_obs = mean(abundance),
-                     mean_pred = sum(exp(est)))
+  # get data frame of predicted COGs (takes a few min)
+  COG = get_cog(pred)
   
-  return(pred_summary)
+  # drop dummy data
+  COG = dplyr::filter(COG, year > year_fcast) %>% select(-max_gradient,-bad_eig)
+  pred$data = pred$data[-c(seq(nrow(pred$data)-nrow(dummy)+1,nrow(pred$data))),] 
+  pred$data$abundance = dat_fcast$abundance # add true abundance in for forecast years
+  
+  return(list(pred = pred$data, COG = COG))
 } 
 
-pred_summary <- predict_glmm(model = glmm1, max_year = 2026)
+# make projections from a given model
+glmm_fcast <- predict_glmm(model = glmm4, year_fcast = year_fcast)
 
-ggplot(pred_summary,aes(mean_pred,mean_obs)) + geom_point(alpha = 0.4) + 
-  geom_abline(intercept = 0, slope = 1) + facet_wrap(~year)
+# example plots
+ggplot(filter(glmm_fcast$COG, coord == "Y", year <= max_year), aes(year, exp(est))) +
+  geom_ribbon(aes(ymin = exp(lwr), ymax = exp(upr)), fill = "grey70") +
+  geom_line() +
+  labs(y = "COG latitude/northings")
+ggplot(filter(glmm_fcast$COG, coord == "X", year <= max_year), aes(year, exp(est))) +
+  geom_ribbon(aes(ymin = exp(lwr), ymax = exp(upr)), fill = "grey70") +
+  geom_line() +
+  labs(y = "COG longitude/eastings")
+
+# compare predicted vs observed for a given amount of years forward
+  # aggregating these at some coarse spatial resolution
+  # to get rid of occurrence of 0s (if they arise from operating model)
+max_year = 2050
+pred_summary = dplyr::mutate(glmm_fcast$pred, lon_cell = ceiling(Lon/4),
+                             lat_cell = ceiling(Lat/4)) %>% 
+  dplyr::filter(year <= max_year) %>%
+  dplyr::group_by(lon_cell, lat_cell, year) %>% 
+  dplyr::summarize(mean_obs = mean(abundance),
+                   mean_pred = sum(exp(est)))
+# plot predicted vs observed
+ggplot(pred_summary,aes(mean_pred,mean_obs)) + geom_point(alpha = 0.4) + facet_wrap(~year) # + geom_abline(intercept = 0, slope = 1) 
