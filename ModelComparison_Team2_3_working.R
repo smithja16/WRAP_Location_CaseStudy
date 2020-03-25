@@ -71,52 +71,104 @@ dat_fcast <- dat[dat$year>2020,]
 
 dat_hist$fYear <- as.factor(dat_hist$year)
 
-gam_enviro <- gam(abundance ~ s(temp), data=dat_hist, family=tw())
-plot(gam_enviro); AIC(gam_enviro)  #AIC=25340
+gam_enviro <- gam(abundance ~ s(temp), data=dat_hist, family=tw(link="log"), method="REML")
+plot(gam_enviro); AIC(gam_enviro)  #AIC=25340, p=1.213
 
-gam_ST1 <- gam(abundance ~ s(temp) + s(Lat,Lon), data=dat_hist, family=tw())
-plot(gam_ST1, pages=1); AIC(gam_ST1)  #25320
+gam_ST1 <- gam(abundance ~ s(temp) + s(Lat,Lon), data=dat_hist, family=tw(link="log"), method="REML")
+plot(gam_ST1, pages=1); AIC(gam_ST1)  #25320, p=1.213
 
-# gam_ST2 <- gam(abundance ~ s(temp) + s(Lat,Lon, by=fYear), data=dat_hist, family=tw())
+# gam_ST2 <- gam(abundance ~ s(temp) + s(Lat,Lon, by=fYear), data=dat_hist, family=Tweedie(p=1.213, link="log"))
 # plot(gam_ST2)
 
-gam_ST3 <- gam(abundance ~ s(temp) + te(Lat,Lon,year), data=dat_hist, family=poisson)
-plot(gam_ST3)
+gam_ST3 <- gam(abundance ~ s(temp) + te(Lat,Lon,year), data=dat_hist, family=Tweedie(p=1.213, link="log"))
+plot(gam_ST3); AIC(gam_ST3)  #25293
 
-gam_ST4 <- gamm(abundance ~ s(temp) + s(Lat,Lon), correlation=corGaus(.1, form=~Lat+Lon), data=dat_hist, family=poisson)
+gam_ST4 <- gamm(abundance ~ s(temp), correlation=corGaus(form=~Lat+Lon|fYear), data=dat_hist,
+                family=Tweedie(p=1.213, link="log"))  #takes a long time to fit...
 plot(gam_ST4$gam)
 
+# dat_upper <- dat_hist[1:(nrow(dat_hist)*0.05),]  #add 5% extra rows as zeros  ***need a smart way to calculate penalty here; even very few data points can have big impact
+# dat_upper[] <- 0
+# dat_upper$temp <- 8  #estimated upper thermal limit
+# dat_upper$abundance <- 0  #all zeros
+# dat_hist2 <- rbind(dat_hist, dat_upper)
+# gam_UTL <- gam(abundance ~ s(temp), data=dat_hist2, family=tw(link="log"), method="REML")
+# 
+# 
+# #---- GAMs with Metabolic 'Constraint' ----
+# 
+# #add fake O2 and metabolic index to data
+# dat_hist$O2 <- rnorm(nrow(dat_hist), 3, 1)  #fake oxygen data
+# #dat$MI <- dat$suitability * dat$O2  #fake metabolic index data
+# dat_hist$MI <- dat_hist$suitability * exp(dat_hist$O2)  #fake metabolic index data
+# #create fake temp-dependent aeorbic scope data
+# dat_hist$AScope <- dnorm(dat_hist$temp, 4, 1)  #pretend that we know exactly how temp affects performance, and it's perfectly correlated with spatial association
+# 
+# 
+# ## Try with MI, or some temp-related index (Aerobic Scope?)
+# # fit gam with Gaussian process smoothers so variances are additive in log-space
+# gam1 <- gam(abundance ~ s(temp,bs='gp'), data=dat_hist, family=tw(link=log))
+# plot(gam1)
+# 
+# #fit gam with metabolic index as offset; use log(MI) so that its multiplicative in natural space
+# gam2 <- gam(abundance ~ s(temp,bs='gp'), data=dat_hist, family=tw(link=log), offset=log(dat_hist$AScope))
+# plot(gam2)
+# 
+# #fit gam with metabolic index as linear covariate (adds one parameter relative to gam2)
+# gam3 <- gam(abundance ~ s(temp,bs='gp') + AScope, data=dat_hist, family=tw(link=log) )
+# plot(gam3)
+# 
+# #fit gam with metabolic index as GP smoothed response (adds effective_degrees_of_freedome relative to gam2)
+# gam4 <- gam(abundance ~ s(temp,bs='gp') + s(AScope,bs='gp'), data=dat_hist, family=tw(link=log) )
+# 
+# #fit with spatially varying impact of linear metabolic inde
+# gam5 <- gam(abundance ~ s(temp,bs='gp') + s(Lon,Lat,by=MI), data=dat_hist, family=tw(link=log) )
+# 
+# # see Degrees of freedom
+# anova(gam1,gam2,gam3,gam4,gam5) #, text="Chisq")
+# 
+# 
+# # ---- Compare some future predictions of temperature ----
+# ylim2 <- 10
+# new_dat <- data.frame(temp=seq(0,max(dat_hist$temp),length=100))
+# new_dat$AScope <- dnorm(new_dat$temp, 4, 1)
+# new_dat2 <- data.frame(temp=seq(0,7,length=100))
+# new_dat2$AScope <- dnorm(new_dat2$temp, 4, 1)
+# 
+# par(mfrow=c(3,2))
+# #actual TPC
+# xx <- seq(0, 7, length=100)
+# yy <- dnorm(xx, mean=4, sd=1)  #Must match function in SimulatedWorld function
+# plot(xx, yy, type="l", lty=2, main="Actual TPC", col="red", xlim=c(0,8), ylab="suitability", xlab="Temp")
+# xlim <- round(100*(max(dat_hist$temp)/7))
+# lines(xx[1:xlim], yy[1:xlim], lwd=2)
+# #gam enviro
+# plot(new_dat2$temp, predict(gam_enviro, newdata=new_dat2, type="response"), type="l", 
+#      main="Enviro GAM", xlim=c(0,8), col="red", lty=2, ylim=c(0,ylim2), ylab="Abundance", xlab="Temp")
+# points(dat_hist$temp, dat_hist$abundance, col="grey")
+# lines(new_dat$temp, predict(gam_enviro, newdata=new_dat, type="response"), lwd=2)
+# #gam 2
+# plot(new_dat2$temp, predict(gam2, newdata=new_dat2, type="response"), type="l",  
+#      main="Enviro Gam w AS Offset", xlim=c(0,8), col="red", lty=2, ylim=c(0,ylim2), ylab="Abundance", xlab="Temp")
+# points(dat_hist$temp, dat_hist$abundance, col="grey")
+# lines(new_dat$temp, predict(gam2, newdata=new_dat, type="response"), lwd=2) 
+# #gam 3
+# plot(new_dat2$temp, predict(gam3, newdata=new_dat2, type="response"), type="l",
+#      main="Enviro Gam w AS Linear", xlim=c(0,8), col="red", lty=2, ylim=c(0,ylim2), ylab="Abundance", xlab="Temp")
+# points(dat_hist$temp, dat_hist$abundance, col="grey")
+# lines(new_dat$temp, predict(gam3, newdata=new_dat, type="response"), lwd=2)
+# #gam 4
+# plot(new_dat2$temp, predict(gam4, newdata=new_dat2, type="response"), type="l",
+#      main="Enviro Gam w AS Smoother", xlim=c(0,8), col="red", lty=2, ylim=c(0,ylim2), ylab="Abundance", xlab="Temp")
+# points(dat_hist$temp, dat_hist$abundance, col="grey")
+# lines(new_dat$temp, predict(gam4, newdata=new_dat, type="response"), lwd=2)
+# #gam UTL
+# plot(new_dat2$temp, predict(gam_UTL, newdata=new_dat2, type="response"), type="l",
+#      main="Enviro Gam w UTL", xlim=c(0,8), col="red", lty=2, ylim=c(0,ylim2), ylab="Abundance", xlab="Temp")
+# points(dat_hist2$temp, dat_hist2$abundance, col="grey")
+# lines(new_dat$temp, predict(gam_UTL, newdata=new_dat, type="response"), lwd=2)
 
-#---- GAMs with Metabolic 'COnstraint' ----
 
-#add fake O2 and metabolic index to data
-dat_hist$O2 <- rnorm(nrow(dat_hist), 3, 1)  #fake oxygen data
-#dat$MI <- dat$suitability * dat$O2  #fake metabolic index data
-dat_hist$MI <- dat_hist$suitability * exp(dat_hist$O2)  #fake metabolic index data
-
-
-# fit gam with Gaussian process smoothers so variances are additive in log-space
-gam1 <- gam(abundance ~ s(temp,bs='gp'), data=dat_hist, family=poisson(link=log))
-
-#fit gam with metabolic index as offset; use log(MI) so that its multiplicative in natural space
-gam2 <- gam(abundance ~ s(temp,bs='gp'), data=dat_hist, family=poisson(link=log), offset=log(dat_hist$MI) )
-
-#fit gam with metabolic index as linear covariate (adds one parameter relative to gam2)
-gam3 <- gam(abundance ~ s(temp,bs='gp') + dat_hist$MI, data=dat_hist, family=poisson(link=log) )
-
-#fit gam with metabolic index as GP smoothed response (adds effective_degrees_of_freedome relative to gam2)
-gam4 <- gam(abundance ~ s(temp,bs='gp') + s(dat_hist$MI,bs='gp'), data=dat_hist, family=poisson(link=log) )
-
-#fit with spatially varying impact of linear metabolic inde
-gam5 <- gam(abundance ~ s(temp,bs='gp') + s(Lon,Lat,by=dat_hist$MI), data=dat_hist, family=poisson(link=log) )
-
-# see Degrees of freedom
-anova(gam1,gam2,gam3,gam4,gam5) #, text="Chisq")
-
-
-<<<<<<< HEAD
-#---- GLMMs ----
-=======
 #----Build GLMM Models----
 
 # note that there is a much cleaner way of looping through models 
@@ -254,4 +306,4 @@ predict_glmm <- function(model, max_year){
 } 
 
 predict_glmm(model = glmm1, max_year = 2026)
->>>>>>> 734793d36ae5464939ad257f7186f82257c46ee7
+
