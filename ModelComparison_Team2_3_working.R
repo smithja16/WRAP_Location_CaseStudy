@@ -353,7 +353,14 @@ lines(cog_fcast_lat$year,cog_fcast_lat$gam_enviro, type='b', col="blue")
 
 ## Effective Area Occupied (Jim)
 #can demonstrate using dat$abundance
-
+# JT:  I'm assuming that dat$abundance is a vector of abundance at each grid cell within the spatial domain under consideration
+# JT:  I'm assuming that all areas are equal size, such that dat$abundance is also proportional to density
+average_density = weighted.mean( x=dat$abundance, w=dat$abundance )
+total_abundance = sum( dat$abundance )
+effective_area_occupied = total_abundance / average_density
+# average_density has units Biomass per area
+# total_abundance has units Biomass
+# therefore: effective_area_occupied has units area
 
 
 
