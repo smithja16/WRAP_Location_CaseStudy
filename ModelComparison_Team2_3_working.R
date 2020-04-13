@@ -20,7 +20,7 @@ source('SimulatedWorld_Function.R') #load simulation function
 #-----Simulate data----
 
 #Set parameters for functions
-abund_enviro <- "poisson" #can be "lnorm_low" (SB); "lnorm_high" (EW); or "poisson" (JS)
+abund_enviro <- "lnorm_low" #can be "lnorm_low" (SB); "lnorm_high" (EW); or "poisson" (JS)
 PA_shape <- "logistic_prev" #can be "logistic" (SB); "logistic_prev","linear" (JS)
 temp_spatial <- "matern" #can be "simple" (SB); or "matern" (EW)
 temp_diff <- c(1,4,3,7) #specifies min and max temps at year 1 and year 100 (e.g. temp_diff=c(1,3,5,7) means year 1 varies from 1-3C and year 100 from 5-7C). For non-ROMS data. 
@@ -30,7 +30,7 @@ temp_diff <- c(1,4,3,7) #specifies min and max temps at year 1 and year 100 (e.g
 # dat <- SimulateWorld_ROMS(PA_shape = PA_shape, abund_enviro = abund_enviro, dir = dir ) #takes a few mins
 #OR this function
 dat <- SimulateWorld(temp_diff = temp_diff,  temp_spatial = temp_spatial, PA_shape = PA_shape, abund_enviro = abund_enviro) #takes a few minutes
-saveRDS(dat, "dat.rds")
+#saveRDS(dat, "dat.rds")
 
 #make headers consistent (Steph needs to update functions to fix this)
 colnames(dat)[1:2] <- c("Lon","Lat")
@@ -68,35 +68,106 @@ dat_hist <- dat[dat$year<=year_fcast,]
 dat_fcast <- dat[dat$year>year_fcast,]
 
 
-#----Build GAM Models----
+#---- GAMs ----
 
-gam1 <- gam(abundance ~ s(temp), data=dat_hist, family=poisson)
-plot(gam1)
+dat_hist$fYear <- as.factor(dat_hist$year)
 
+gam_enviro <- gam(abundance ~ s(temp), data=dat_hist, family=tw(link="log"), method="REML")
+plot(gam_enviro); AIC(gam_enviro)  #AIC=25340, p=1.213
 
-#add fake O2 and metabolic index to data
-dat_hist$O2 <- rnorm(nrow(dat_hist), 3, 1)  #fake oxygen data
-#dat$MI <- dat$suitability * dat$O2  #fake metabolic index data
-dat_hist$MI <- dat_hist$suitability * exp(dat_hist$O2)  #fake metabolic index data
+gam_ST1 <- gam(abundance ~ s(temp) + s(Lat,Lon), data=dat_hist, family=tw(link="log"), method="REML")
+plot(gam_ST1, pages=1); AIC(gam_ST1)  #25320, p=1.213
 
+# gam_ST2 <- gam(abundance ~ s(temp) + s(Lat,Lon, by=fYear), data=dat_hist, family=Tweedie(p=1.213, link="log"))
+# plot(gam_ST2)
 
-# fit gam with Gaussian process smoothers so variances are additive in log-space
-gam1 <- gam(abundance ~ s(temp,bs='gp'), data=dat_hist, family=poisson(link=log))
+gam_ST3 <- gam(abundance ~ s(temp) + te(Lat,Lon,year), data=dat_hist, family=Tweedie(p=1.213, link="log"))
+plot(gam_ST3); AIC(gam_ST3)  #25293
 
-#fit gam with metabolic index as offset; use log(MI) so that its multiplicative in natural space
-gam2 <- gam(abundance ~ s(temp,bs='gp'), data=dat_hist, family=poisson(link=log), offset=log(dat_hist$MI) )
+gam_ST4 <- gamm(abundance ~ s(temp), correlation=corGaus(form=~Lat+Lon|fYear), data=dat_hist,
+                family=Tweedie(p=1.213, link="log"))  #takes a long time to fit...
+plot(gam_ST4$gam)
 
-#fit gam with metabolic index as linear covariate (adds one parameter relative to gam2)
-gam3 <- gam(abundance ~ s(temp,bs='gp') + dat_hist$MI, data=dat_hist, family=poisson(link=log) )
-
-#fit gam with metabolic index as GP smoothed response (adds effective_degrees_of_freedome relative to gam2)
-gam4 <- gam(abundance ~ s(temp,bs='gp') + s(dat_hist$MI,bs='gp'), data=dat_hist, family=poisson(link=log) )
-
-#fit with spatially varying impact of linear metabolic inde
-gam5 <- gam(abundance ~ s(temp,bs='gp') + s(Lon,Lat,by=dat_hist$MI), data=dat_hist, family=poisson(link=log) )
-
-# see Degrees of freedom
-anova(gam1,gam2,gam3,gam4,gam5) #, text="Chisq")
+# dat_upper <- dat_hist[1:(nrow(dat_hist)*0.05),]  #add 5% extra rows as zeros  ***need a smart way to calculate penalty here; even very few data points can have big impact
+# dat_upper[] <- 0
+# dat_upper$temp <- 8  #estimated upper thermal limit
+# dat_upper$abundance <- 0  #all zeros
+# dat_hist2 <- rbind(dat_hist, dat_upper)
+# gam_UTL <- gam(abundance ~ s(temp), data=dat_hist2, family=tw(link="log"), method="REML")
+# 
+# 
+# #---- GAMs with Metabolic 'Constraint' ----
+# 
+# #add fake O2 and metabolic index to data
+# dat_hist$O2 <- rnorm(nrow(dat_hist), 3, 1)  #fake oxygen data
+# #dat$MI <- dat$suitability * dat$O2  #fake metabolic index data
+# dat_hist$MI <- dat_hist$suitability * exp(dat_hist$O2)  #fake metabolic index data
+# #create fake temp-dependent aeorbic scope data
+# dat_hist$AScope <- dnorm(dat_hist$temp, 4, 1)  #pretend that we know exactly how temp affects performance, and it's perfectly correlated with spatial association
+# 
+# 
+# ## Try with MI, or some temp-related index (Aerobic Scope?)
+# # fit gam with Gaussian process smoothers so variances are additive in log-space
+# gam1 <- gam(abundance ~ s(temp,bs='gp'), data=dat_hist, family=tw(link=log))
+# plot(gam1)
+# 
+# #fit gam with metabolic index as offset; use log(MI) so that its multiplicative in natural space
+# gam2 <- gam(abundance ~ s(temp,bs='gp'), data=dat_hist, family=tw(link=log), offset=log(dat_hist$AScope))
+# plot(gam2)
+# 
+# #fit gam with metabolic index as linear covariate (adds one parameter relative to gam2)
+# gam3 <- gam(abundance ~ s(temp,bs='gp') + AScope, data=dat_hist, family=tw(link=log) )
+# plot(gam3)
+# 
+# #fit gam with metabolic index as GP smoothed response (adds effective_degrees_of_freedome relative to gam2)
+# gam4 <- gam(abundance ~ s(temp,bs='gp') + s(AScope,bs='gp'), data=dat_hist, family=tw(link=log) )
+# 
+# #fit with spatially varying impact of linear metabolic inde
+# gam5 <- gam(abundance ~ s(temp,bs='gp') + s(Lon,Lat,by=MI), data=dat_hist, family=tw(link=log) )
+# 
+# # see Degrees of freedom
+# anova(gam1,gam2,gam3,gam4,gam5) #, text="Chisq")
+# 
+# 
+# # ---- Compare some future predictions of temperature ----
+# ylim2 <- 10
+# new_dat <- data.frame(temp=seq(0,max(dat_hist$temp),length=100))
+# new_dat$AScope <- dnorm(new_dat$temp, 4, 1)
+# new_dat2 <- data.frame(temp=seq(0,7,length=100))
+# new_dat2$AScope <- dnorm(new_dat2$temp, 4, 1)
+# 
+# par(mfrow=c(2,1))
+# #actual TPC
+# xx <- seq(0, 7, length=100)
+# yy <- dnorm(xx, mean=4, sd=1)  #Must match function in SimulatedWorld function
+# plot(xx, yy, type="l", lty=2, main="Actual TPC", col="red", xlim=c(0,8), ylab="suitability", xlab="Temp")
+# xlim <- round(100*(max(dat_hist$temp)/7))
+# lines(xx[1:xlim], yy[1:xlim], lwd=2)
+# #gam enviro
+# plot(new_dat2$temp, predict(gam_enviro, newdata=new_dat2, type="response"), type="l",
+#      main="Enviro GAM", xlim=c(0,8), col="red", lty=2, ylim=c(0,ylim2), ylab="Abundance", xlab="Temp")
+# points(dat_hist$temp, dat_hist$abundance, col="grey")
+# lines(new_dat$temp, predict(gam_enviro, newdata=new_dat, type="response"), lwd=2)
+# #gam 2
+# plot(new_dat2$temp, predict(gam2, newdata=new_dat2, type="response"), type="l",  
+#      main="Enviro Gam w AS Offset", xlim=c(0,8), col="red", lty=2, ylim=c(0,ylim2), ylab="Abundance", xlab="Temp")
+# points(dat_hist$temp, dat_hist$abundance, col="grey")
+# lines(new_dat$temp, predict(gam2, newdata=new_dat, type="response"), lwd=2) 
+# #gam 3
+# plot(new_dat2$temp, predict(gam3, newdata=new_dat2, type="response"), type="l",
+#      main="Enviro Gam w AS Linear", xlim=c(0,8), col="red", lty=2, ylim=c(0,ylim2), ylab="Abundance", xlab="Temp")
+# points(dat_hist$temp, dat_hist$abundance, col="grey")
+# lines(new_dat$temp, predict(gam3, newdata=new_dat, type="response"), lwd=2)
+# #gam 4
+# plot(new_dat2$temp, predict(gam4, newdata=new_dat2, type="response"), type="l",
+#      main="Enviro Gam w AS Smoother", xlim=c(0,8), col="red", lty=2, ylim=c(0,ylim2), ylab="Abundance", xlab="Temp")
+# points(dat_hist$temp, dat_hist$abundance, col="grey")
+# lines(new_dat$temp, predict(gam4, newdata=new_dat, type="response"), lwd=2)
+# #gam UTL
+# plot(new_dat2$temp, predict(gam_UTL, newdata=new_dat2, type="response"), type="l",
+#      main="Enviro Gam w UTL", xlim=c(0,8), col="red", lty=2, ylim=c(0,ylim2), ylab="Abundance", xlab="Temp")
+# points(dat_hist2$temp, dat_hist2$abundance, col="grey")
+# lines(new_dat$temp, predict(gam_UTL, newdata=new_dat, type="response"), lwd=2)
 
 
 #----Build GLMM Models----
@@ -127,7 +198,7 @@ glmm1 <- try(sdmTMB(
   weights = weights,
   spatial_only = FALSE,
   spatial_trend = FALSE
-))
+))  #takes 5+ mins
 
 # model without covariates but with spatial trend random field, and spatiotemporal random fields as IID
 glmm2 <- try(sdmTMB(
@@ -235,6 +306,7 @@ predict_glmm <- function(model, year_fcast){
   return(list(pred = pred$data, COG = COG))
 } 
 
+
 # make projections from a given model
 glmm_fcast <- predict_glmm(model = glmm4, year_fcast = year_fcast)
 
@@ -260,3 +332,67 @@ pred_summary = dplyr::mutate(glmm_fcast$pred, lon_cell = ceiling(Lon/4),
                    mean_pred = sum(exp(est)))
 # plot predicted vs observed
 ggplot(pred_summary,aes(mean_pred,mean_obs)) + geom_point(alpha = 0.4) + facet_wrap(~year) # + geom_abline(intercept = 0, slope = 1) 
+
+predict_glmm(model = glmm1, max_year = 2026)
+
+# plot(dat_fcast$abundance, exp(pred$est), xlab="observed", ylab="predicted")
+# abline(0,1, col='red')
+
+
+
+# ---- Compare prediction with actual future distribution ----
+RMSE = function(p, o){
+  sqrt(mean((p - o)^2))
+}
+
+par(mfrow=c(4,1), mar=c(3,4,2.5,1))
+
+dat_fcast$gam_enviro <- predict(gam_enviro,dat_fcast,type="response")
+plot(aggregate(abundance~year,dat_fcast,FUN="sum"),type="l", lwd=2, ylab="Abundance", ylim=c(0,2500), 
+     xlim=c(2021,2080), xlab="", main='Gamm-enviro, Future Actual vs Predicted')
+lines(aggregate(gam_enviro~year,dat_fcast,FUN="sum"),type="l",  lwd=2,ylab="Abundance",col='blue')
+
+save_error <- data.frame(year=seq(2021,2080), cor=0, rmse=0)
+for (yy in 2021:2080) {
+  dat_fcast_x <- dat_fcast[dat_fcast$year==yy,]
+  save_error$cor[save_error$year==yy] <- cor(dat_fcast_x$abundance, dat_fcast_x$gam_enviro)
+  save_error$rmse[save_error$year==yy] <- RMSE(dat_fcast_x$abundance, dat_fcast_x$gam_enviro)
+}
+plot(save_error$year, save_error$cor, type="l", ylab="Correlation", xlab="",
+     main="Correlation, Predicted and Actual across domain")
+plot(save_error$year, save_error$rmse, type="l", ylab="Correlation", xlab="",
+     main="RMSE, Predicted and Actual across domain")
+
+## COG
+cog_fcast_lat <- as.data.frame(matrix(NA,nrow=nrow(dat_fcast),ncol=3))
+colnames(cog_fcast_lat) <- c("year","truth","gam_enviro")
+counter=1
+for (y in unique(dat_fcast$year)){
+  cog_fcast_lat[counter,1] <- y
+  cog_fcast_lat[counter,2] <- weighted.mean(dat_fcast$Lat[dat_fcast$year==y],w=dat_fcast$abundance[dat_fcast$year==y])
+  cog_fcast_lat[counter,3] <- weighted.mean(dat_fcast$Lat[dat_fcast$year==y],w=dat_fcast$gam_enviro[dat_fcast$year==y])
+  counter = counter + 1
+}
+head(cog_fcast_lat)
+plot(cog_fcast_lat$year,cog_fcast_lat$truth, type='b', ylab="COG 'latitude'", xlim=c(2021,2080),
+     main="COG")
+lines(cog_fcast_lat$year,cog_fcast_lat$gam_enviro, type='b', col="blue")
+
+
+## Effective Area Occupied (Jim)
+#can demonstrate using dat$abundance
+# JT:  I'm assuming that dat$abundance is a vector of abundance at each grid cell within the spatial domain under consideration
+# JT:  I'm assuming that all areas are equal size, such that dat$abundance is also proportional to density
+average_density = weighted.mean( x=dat$abundance, w=dat$abundance )
+total_abundance = sum( dat$abundance )
+effective_area_occupied = total_abundance / average_density
+# average_density has units Biomass per area
+# total_abundance has units Biomass
+# therefore: effective_area_occupied has units area
+
+
+
+
+
+
+
