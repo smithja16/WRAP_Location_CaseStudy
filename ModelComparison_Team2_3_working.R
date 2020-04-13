@@ -312,47 +312,47 @@ predict_glmm(model = glmm1, max_year = 2026)
 
 
 
-# ---- Compare prediction with actual future distribution ----
-RMSE = function(p, o){
-  sqrt(mean((p - o)^2))
-}
-
-par(mfrow=c(4,1), mar=c(3,4,2.5,1))
-
-dat_fcast$gam_enviro <- predict(gam_enviro,dat_fcast,type="response")
-plot(aggregate(abundance~year,dat_fcast,FUN="sum"),type="l", lwd=2, ylab="Abundance", ylim=c(0,2500), 
-     xlim=c(2021,2080), xlab="", main='Gamm-enviro, Future Actual vs Predicted')
-lines(aggregate(gam_enviro~year,dat_fcast,FUN="sum"),type="l",  lwd=2,ylab="Abundance",col='blue')
-
-save_error <- data.frame(year=seq(2021,2080), cor=0, rmse=0)
-for (yy in 2021:2080) {
-  dat_fcast_x <- dat_fcast[dat_fcast$year==yy,]
-  save_error$cor[save_error$year==yy] <- cor(dat_fcast_x$abundance, dat_fcast_x$gam_enviro)
-  save_error$rmse[save_error$year==yy] <- RMSE(dat_fcast_x$abundance, dat_fcast_x$gam_enviro)
-}
-plot(save_error$year, save_error$cor, type="l", ylab="Correlation", xlab="",
-     main="Correlation, Predicted and Actual across domain")
-plot(save_error$year, save_error$rmse, type="l", ylab="Correlation", xlab="",
-     main="RMSE, Predicted and Actual across domain")
-
-## COG
-cog_fcast_lat <- as.data.frame(matrix(NA,nrow=nrow(dat_fcast),ncol=3))
-colnames(cog_fcast_lat) <- c("year","truth","gam_enviro")
-counter=1
-for (y in unique(dat_fcast$year)){
-  cog_fcast_lat[counter,1] <- y
-  cog_fcast_lat[counter,2] <- weighted.mean(dat_fcast$Lat[dat_fcast$year==y],w=dat_fcast$abundance[dat_fcast$year==y])
-  cog_fcast_lat[counter,3] <- weighted.mean(dat_fcast$Lat[dat_fcast$year==y],w=dat_fcast$gam_enviro[dat_fcast$year==y])
-  counter = counter + 1
-}
-head(cog_fcast_lat)
-plot(cog_fcast_lat$year,cog_fcast_lat$truth, type='b', ylab="COG 'latitude'", xlim=c(2021,2080),
-     main="COG")
-lines(cog_fcast_lat$year,cog_fcast_lat$gam_enviro, type='b', col="blue")
-
-
-## Effective Area Occupied (Jim)
-#can demonstrate using dat$abundance
+# # ---- Compare prediction with actual future distribution ----
+# RMSE = function(p, o){
+#   sqrt(mean((p - o)^2))
+# }
+# 
+# par(mfrow=c(4,1), mar=c(3,4,2.5,1))
+# 
+# dat_fcast$gam_enviro <- predict(gam_enviro,dat_fcast,type="response")
+# plot(aggregate(abundance~year,dat_fcast,FUN="sum"),type="l", lwd=2, ylab="Abundance", ylim=c(0,2500), 
+#      xlim=c(2021,2080), xlab="", main='Gamm-enviro, Future Actual vs Predicted')
+# lines(aggregate(gam_enviro~year,dat_fcast,FUN="sum"),type="l",  lwd=2,ylab="Abundance",col='blue')
+# 
+# save_error <- data.frame(year=seq(2021,2080), cor=0, rmse=0)
+# for (yy in 2021:2080) {
+#   dat_fcast_x <- dat_fcast[dat_fcast$year==yy,]
+#   save_error$cor[save_error$year==yy] <- cor(dat_fcast_x$abundance, dat_fcast_x$gam_enviro)
+#   save_error$rmse[save_error$year==yy] <- RMSE(dat_fcast_x$abundance, dat_fcast_x$gam_enviro)
+# }
+# plot(save_error$year, save_error$cor, type="l", ylab="Correlation", xlab="",
+#      main="Correlation, Predicted and Actual across domain")
+# plot(save_error$year, save_error$rmse, type="l", ylab="Correlation", xlab="",
+#      main="RMSE, Predicted and Actual across domain")
+# 
+# ## COG
+# cog_fcast_lat <- as.data.frame(matrix(NA,nrow=nrow(dat_fcast),ncol=3))
+# colnames(cog_fcast_lat) <- c("year","truth","gam_enviro")
+# counter=1
+# for (y in unique(dat_fcast$year)){
+#   cog_fcast_lat[counter,1] <- y
+#   cog_fcast_lat[counter,2] <- weighted.mean(dat_fcast$Lat[dat_fcast$year==y],w=dat_fcast$abundance[dat_fcast$year==y])
+#   cog_fcast_lat[counter,3] <- weighted.mean(dat_fcast$Lat[dat_fcast$year==y],w=dat_fcast$gam_enviro[dat_fcast$year==y])
+#   counter = counter + 1
+# }
+# head(cog_fcast_lat)
+# plot(cog_fcast_lat$year,cog_fcast_lat$truth, type='b', ylab="COG 'latitude'", xlim=c(2021,2080),
+#      main="COG")
+# lines(cog_fcast_lat$year,cog_fcast_lat$gam_enviro, type='b', col="blue")
+# 
+# 
+# ## Effective Area Occupied (Jim)
+# #can demonstrate using dat$abundance
 
 
 
